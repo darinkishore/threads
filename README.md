@@ -32,7 +32,7 @@ pip install -e .
 
 ## Database
 
-Threads stores data in SQLite under `~/.config/threadz/threads.db` by default.
+Threads stores data in SQLite under `~/.config/threads/threads.db` by default.
 
 ## Future Plans
 

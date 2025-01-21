@@ -5,28 +5,29 @@ A minimal CLI tool to create and manage "research threads" — each thread is a 
 ## Installation
 
 ```bash
-# Using pip
-pip install .
-# or if published to PyPI eventually
-pip install threads
+git clone https://github.com/darinkishore/threads.git
+cd threads
+uv install --tool -e .
+# or
+pip install -e . 
 ```
 
 ## Commands
 
-- **thread new "question"**
+- **`thread new "question"`**
   Creates a new thread with the provided question or title.
 
-- **thread attach "content"**
+- **`thread attach "content"`**
   Attaches the given text or URL to an existing thread via an interactive picker (shows last 5 threads).
   If you omit `"content"`, it will read from your clipboard (if it only contains text).
 
-- **thread ls**
+- **`thread ls`**
   Lists threads, showing ID, title, resource count, and last active time.
 
-- **thread view [id]**
+- **`thread view [id]`**
   Displays a single thread’s details: question, timestamps, and a list of resources.
 
-- **thread current**
+- **`thread current`**
   Shows the single most recently active thread in the same format as `thread view`.
 
 ## Database

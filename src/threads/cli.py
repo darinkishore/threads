@@ -51,9 +51,7 @@ def main():
             if clip and isinstance(clip, str):
                 content = clip.strip()
             else:
-                console.print(
-                    "[red]Error:[/red] No content passed and clipboard empty."
-                )
+                console.print("[red]Error:[/red] No content passed and clipboard empty.")
                 sys.exit(1)
         cmd_attach(content)
 
@@ -101,9 +99,7 @@ def cmd_attach(content: str):
         # row = (id, question, last_active)
         t_id, t_question, t_last_active = row
         ago = time_since(t_last_active)
-        console.print(
-            f'  [bold]{i}.[/bold] (#{t_id}) "{t_question}" [dim]{ago} ago[/dim]'
-        )
+        console.print(f'  [bold]{i}.[/bold] (#{t_id}) "{t_question}" [dim]{ago} ago[/dim]')
     console.print("  [bold]n.[/bold] New thread")
     console.print("")
 

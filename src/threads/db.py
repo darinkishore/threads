@@ -6,6 +6,45 @@ from typing import List, Tuple, Optional
 DEFAULT_DB_PATH = os.path.expanduser("~/.config/threads/threads.db")
 
 
+def _get_db_version(cursor: sqlite3.Cursor) -> int:
+    """Get the current database version."""
+    try:
+        cursor.execute("SELECT version FROM schema_version")
+        return cursor.fetchone()[0]
+    except sqlite3.OperationalError:
+        return 0
+
+
+def _set_db_version(cursor: sqlite3.Cursor, version: int) -> None:
+    """Set the database version."""
+    cursor.execute("INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, ?)", (version,))
+
+
+def _run_migration_1(cursor: sqlite3.Cursor) -> None:
+    """Add tags support"""
+    # Create schema_version table if it doesn't exist
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS schema_version (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        version INTEGER NOT NULL
+    )
+    """)
+
+    # Create tags table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        created_at REAL NOT NULL,
+        FOREIGN KEY(thread_id) REFERENCES threads(id),
+        UNIQUE(thread_id, name)
+    )
+    """)
+
+    _set_db_version(cursor, 1)
+
+
 def ensure_db_exists(db_path: str = DEFAULT_DB_PATH) -> None:
     """Ensure the SQLite database and tables exist, creating if necessary."""
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -33,6 +72,11 @@ def ensure_db_exists(db_path: str = DEFAULT_DB_PATH) -> None:
         FOREIGN KEY(thread_id) REFERENCES threads(id)
     )
     """)
+
+    # Run migrations if needed
+    version = _get_db_version(cursor)
+    if version < 1:
+        _run_migration_1(cursor)
 
     conn.commit()
     conn.close()
@@ -208,3 +252,43 @@ def update_thread_last_active(thread_id: int, db_path: str = DEFAULT_DB_PATH) ->
     )
     conn.commit()
     conn.close()
+
+
+def add_tag(thread_id: int, tag_name: str, db_path: str = DEFAULT_DB_PATH) -> None:
+    """Add a tag to a thread."""
+    ensure_db_exists(db_path)
+    timestamp = time.time()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+        INSERT INTO tags (thread_id, name, created_at)
+        VALUES (?, ?, ?)
+        """,
+            (thread_id, tag_name, timestamp),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Tag already exists for this thread, ignore
+        pass
+    finally:
+        conn.close()
+
+
+def get_tags_for_thread(thread_id: int, db_path: str = DEFAULT_DB_PATH) -> List[str]:
+    """Get all tags for a thread."""
+    ensure_db_exists(db_path)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+    SELECT name FROM tags
+    WHERE thread_id = ?
+    ORDER BY name ASC
+    """,
+        (thread_id,),
+    )
+    tags = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return tags

@@ -1,28 +1,31 @@
 import sys
 import time
+
 import pyperclip
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Prompt
-from typing import List, Tuple
+from rich.table import Table
 
 from .db import (
-    create_thread,
+    add_tag,
+    archive_thread,
     attach_resource,
-    list_threads,
-    get_thread_by_id,
-    get_resources_for_thread,
+    create_thread,
     get_last_n_threads,
     get_most_recent_thread,
-    update_thread_last_active,
-    add_tag,
+    get_resources_for_thread,
     get_tags_for_thread,
+    get_thread_by_id,
+    list_threads,
+    unarchive_thread,
+    update_thread_last_active,
 )
+
 
 console = Console()
 
 
-def parse_args(args: List[str]) -> Tuple[str, List[str], List[str]]:
+def parse_args(args: list[str]) -> tuple[str, list[str], list[str]]:
     """Parse command and extract flags.
     Returns (command, known_flags, unknown_flags)
     Known flags are --deep
@@ -94,30 +97,50 @@ def main():
                 add_tag(thread_id, "deep")
 
     elif command == "ls":
-        cmd_ls()
+        # Check for --all flag to show archived threads
+        include_archived = "--all" in known_flags
+        cmd_ls(include_archived)
+
+    elif command == "archive":
+        # thread archive [id]
+        thread_id = get_thread_id_from_args()
+        cmd_archive(thread_id)
+
+    elif command == "unarchive":
+        # thread unarchive [id]
+        thread_id = get_thread_id_from_args()
+        cmd_unarchive(thread_id)
 
     elif command == "view":
         # thread view [id]
-        thread_id = None
-        for arg in sys.argv[2:]:
-            if not arg.startswith("--"):
-                if not arg.isdigit():
-                    console.print("[red]Error:[/red] Thread ID must be an integer.")
-                    sys.exit(1)
-                thread_id = int(arg)
-                break
-
-        if thread_id is None:
-            console.print("[red]Error:[/red] No thread ID specified.")
-            sys.exit(1)
-
+        thread_id = get_thread_id_from_args()
         cmd_view(thread_id)
 
     elif command == "current":
-        cmd_current()
+        # Check for --all flag to potentially include archived threads
+        include_archived = "--all" in known_flags
+        cmd_current(include_archived)
 
     else:
         print_help()
+
+
+def get_thread_id_from_args() -> int:
+    """Parse thread ID from command line arguments."""
+    thread_id = None
+    for arg in sys.argv[2:]:
+        if not arg.startswith("--"):
+            if not arg.isdigit():
+                console.print("[red]Error:[/red] Thread ID must be an integer.")
+                sys.exit(1)
+            thread_id = int(arg)
+            break
+
+    if thread_id is None:
+        console.print("[red]Error:[/red] No thread ID specified.")
+        sys.exit(1)
+        
+    return thread_id
 
 
 def print_help():
@@ -126,12 +149,15 @@ def print_help():
     console.print(
         '  thread attach "content" [--deep] [--tag1] [--tag2] ...  (uses interactive picker)'
     )
-    console.print("  thread ls   (list threads)")
+    console.print("  thread ls [--all]   (list threads, --all to include archived)")
     console.print("  thread view [id]  (view a thread's details)")
-    console.print("  thread current     (view the most recently active thread)")
+    console.print("  thread current [--all]  (view the most recently active thread)")
+    console.print("  thread archive [id]  (archive a thread)")
+    console.print("  thread unarchive [id]  (unarchive a thread)")
     console.print("")
     console.print("[dim]Flags:[/dim]")
     console.print("  --deep            Mark thread as requiring deep analysis")
+    console.print("  --all             Include archived threads in listing/current")
     console.print("  --tag1, --tag2    Any flag starting with -- becomes a tag")
 
 
@@ -141,19 +167,20 @@ def cmd_new(question: str) -> int:
     return thread_id
 
 
-def cmd_attach(content: str) -> Optional[int]:
-    # Show an interactive picker with the last 5 threads
-    recent = get_last_n_threads(n=5)
+def cmd_attach(content: str) -> int | None:
+    # Show an interactive picker with the last 5 active threads
+    recent = get_last_n_threads(n=5, include_archived=False)
     console.print("[bold cyan]Recent Threads[/bold cyan]")
     for i, row in enumerate(recent, start=1):
-        # row = (id, question, last_active)
-        t_id, t_question, t_last_active = row
+        # row = (id, question, last_active, is_archived)
+        t_id, t_question, t_last_active, is_archived = row
         ago = time_since(t_last_active)
         # Get tags
         tags = get_tags_for_thread(t_id)
         tags_str = f" [{', '.join(tags)}]" if tags else ""
+        status = " [yellow]ARCHIVED[/yellow]" if is_archived else ""
         console.print(
-            f'  [bold]{i}.[/bold] (#{t_id}) "{t_question}"{tags_str} [dim]{ago} ago[/dim]'
+            f'  [bold]{i}.[/bold] (#{t_id}) "{t_question}"{tags_str}{status} [dim]{ago} ago[/dim]'
         )
     console.print("  [bold]n.[/bold] New thread")
     console.print("")
@@ -181,6 +208,17 @@ def cmd_attach(content: str) -> Optional[int]:
                 return None
             selected = recent[idx - 1]
             selected_id = selected[0]
+            
+            # Check if thread is archived
+            if selected[3]:  # is_archived
+                console.print(f"[yellow]Warning: Thread #{selected_id} is archived.[/yellow]")
+                if not Prompt.ask(
+                    "[bold]Attach to archived thread anyway? (y/n)[/bold]", 
+                    choices=["y", "n"], 
+                    default="n"
+                ) == "y":
+                    return None
+            
             rtype = guess_resource_type(content)
             attach_resource(selected_id, content, rtype)
             console.print(f"[green]Attached resource to thread #{selected_id}[/green]")
@@ -190,8 +228,8 @@ def cmd_attach(content: str) -> Optional[int]:
             return None
 
 
-def cmd_ls():
-    threads = list_threads(limit=50)  # default 50, can be changed
+def cmd_ls(include_archived: bool = False):
+    threads = list_threads(limit=50, include_archived=include_archived)  # default 50, can be changed
     if not threads:
         console.print("[dim]No threads found.[/dim]")
         return
@@ -202,13 +240,53 @@ def cmd_ls():
     table.add_column("Tags", style="yellow")
     table.add_column("Resources", style="magenta")
     table.add_column("Last Active", style="dim")
+    table.add_column("Status", style="yellow")
 
-    for t_id, question, resource_count, last_active in threads:
+    for t_id, question, resource_count, last_active, is_archived in threads:
         ago = time_since(last_active)
         tags = get_tags_for_thread(t_id)
         tags_str = ", ".join(tags) if tags else ""
-        table.add_row(str(t_id), question, tags_str, str(resource_count), f"{ago} ago")
+        status = "[yellow]Archived[/yellow]" if is_archived else "Active"
+        table.add_row(str(t_id), question, tags_str, str(resource_count), f"{ago} ago", status)
     console.print(table)
+
+
+def cmd_archive(thread_id: int):
+    """Archive a thread."""
+    thread = get_thread_by_id(thread_id)
+    if not thread:
+        console.print(f"[red]Error:[/red] Thread #{thread_id} not found.")
+        return
+
+    # Check if already archived
+    if thread[4]:  # is_archived field
+        console.print(f"[yellow]Thread #{thread_id} is already archived.[/yellow]")
+        return
+
+    success = archive_thread(thread_id)
+    if success:
+        console.print(f"[green]Thread #{thread_id} has been archived.[/green]")
+    else:
+        console.print(f"[red]Error:[/red] Could not archive thread #{thread_id}.")
+
+
+def cmd_unarchive(thread_id: int):
+    """Unarchive a thread."""
+    thread = get_thread_by_id(thread_id)
+    if not thread:
+        console.print(f"[red]Error:[/red] Thread #{thread_id} not found.")
+        return
+
+    # Check if already active
+    if not thread[4]:  # is_archived field
+        console.print(f"[yellow]Thread #{thread_id} is already active (not archived).[/yellow]")
+        return
+
+    success = unarchive_thread(thread_id)
+    if success:
+        console.print(f"[green]Thread #{thread_id} has been unarchived.[/green]")
+    else:
+        console.print(f"[red]Error:[/red] Could not unarchive thread #{thread_id}.")
 
 
 def cmd_view(thread_id: int):
@@ -217,14 +295,15 @@ def cmd_view(thread_id: int):
         console.print(f"[red]Error:[/red] Thread #{thread_id} not found.")
         return
 
-    t_id, t_question, t_created, t_last_active = thread_data
+    t_id, t_question, t_created, t_last_active, t_is_archived = thread_data
     # Mark thread as viewed -> update last_active
     update_thread_last_active(t_id)
 
     resources = get_resources_for_thread(t_id)
     tags = get_tags_for_thread(t_id)
 
-    console.print(f'[blue bold]Thread #{t_id}[/blue bold]: "{t_question}"')
+    status = "[yellow]ARCHIVED[/yellow]" if t_is_archived else ""
+    console.print(f'[blue bold]Thread #{t_id}[/blue bold]: "{t_question}" {status}')
     if tags:
         console.print(f"[yellow]Tags:[/yellow] {', '.join(tags)}")
     console.print(f"Created: [dim]{time.ctime(t_created)}[/dim]")
@@ -239,19 +318,21 @@ def cmd_view(thread_id: int):
         console.print(f"  {idx}) [{r_type}] {r_content}")
 
 
-def cmd_current():
-    row = get_most_recent_thread()
+def cmd_current(include_archived: bool = False):
+    row = get_most_recent_thread(include_archived=include_archived)
     if not row:
-        console.print("[dim]No threads yet.[/dim]")
+        msg = "No threads yet." if include_archived else "No active threads. Try --all to include archived threads."
+        console.print(f"[dim]{msg}[/dim]")
         return
 
-    t_id, t_question, t_created, t_last_active = row
+    t_id, t_question, t_created, t_last_active, t_is_archived = row
     # mark it viewed -> update last_active
     update_thread_last_active(t_id)
     resources = get_resources_for_thread(t_id)
     tags = get_tags_for_thread(t_id)
 
-    console.print(f'[blue bold]Thread #{t_id}[/blue bold]: "{t_question}"')
+    status = "[yellow]ARCHIVED[/yellow]" if t_is_archived else ""
+    console.print(f'[blue bold]Thread #{t_id}[/blue bold]: "{t_question}" {status}')
     if tags:
         console.print(f"[yellow]Tags:[/yellow] {', '.join(tags)}")
     console.print(f"Created: [dim]{time.ctime(t_created)}[/dim]")

@@ -5,7 +5,10 @@ description = "CLI tool to create and manage research threads"
 readme = "README.md"
 authors = [{ name = "Darin Kishore", email = "darinkishore@protonmail.com" }]
 requires-python = ">=3.12"
-dependencies = ["rich>=13.9.4", "pyperclip>=1.8.2"]
+dependencies = [
+    "rich>=13.9.4",
+ "pyperclip>=1.8.2",
+]
 
 [project.scripts]
 thread = "threads.cli:main"
@@ -18,7 +21,8 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "ruff>=0.9.6",
- "pytest>=7.0.0",
+    "pytest>=7.0.0",
+    "pyperclip>=1.9.0",
 ]
 
 [tool.pytest.ini_options]

@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.12"
 
 [[package]]
@@ -137,6 +138,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pyperclip" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -149,6 +151,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pyperclip", specifier = ">=1.9.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.9.6" },
 ]

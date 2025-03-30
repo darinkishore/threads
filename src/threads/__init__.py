@@ -1,2 +1,2 @@
 def hello() -> str:
-    return "Hello from threads!"
+    return 'Hello from threads!'

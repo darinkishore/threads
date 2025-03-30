@@ -3,17 +3,16 @@ import shutil
 import sqlite3
 import time
 from datetime import datetime
-from pathlib import Path
 
 
-DEFAULT_DB_PATH = os.path.expanduser("~/.config/threads/threads.db")
-DEFAULT_BACKUP_DIR = os.path.expanduser("~/.config/threads/backups")
+DEFAULT_DB_PATH = os.path.expanduser('~/.config/threads/threads.db')
+DEFAULT_BACKUP_DIR = os.path.expanduser('~/.config/threads/backups')
 
 
 def _get_db_version(cursor: sqlite3.Cursor) -> int:
     """Get the current database version."""
     try:
-        cursor.execute("SELECT version FROM schema_version")
+        cursor.execute('SELECT version FROM schema_version')
         return cursor.fetchone()[0]
     except sqlite3.OperationalError:
         return 0
@@ -21,7 +20,9 @@ def _get_db_version(cursor: sqlite3.Cursor) -> int:
 
 def _set_db_version(cursor: sqlite3.Cursor, version: int) -> None:
     """Set the database version."""
-    cursor.execute("INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, ?)", (version,))
+    cursor.execute(
+        'INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, ?)', (version,)
+    )
 
 
 def _run_migration_1(cursor: sqlite3.Cursor) -> None:
@@ -52,11 +53,15 @@ def _run_migration_1(cursor: sqlite3.Cursor) -> None:
 def _run_migration_2(cursor: sqlite3.Cursor) -> None:
     """Add archive support for threads"""
     # Add is_archived column to threads table
-    cursor.execute("ALTER TABLE threads ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+    cursor.execute(
+        'ALTER TABLE threads ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0'
+    )
     _set_db_version(cursor, 2)
 
 
-def backup_database(db_path: str = DEFAULT_DB_PATH, backup_dir: str = DEFAULT_BACKUP_DIR) -> str:
+def backup_database(
+    db_path: str = DEFAULT_DB_PATH, backup_dir: str = DEFAULT_BACKUP_DIR
+) -> str:
     """
     Create a backup of the database.
     Returns the path to the backup file or empty string if backup failed.
@@ -64,33 +69,36 @@ def backup_database(db_path: str = DEFAULT_DB_PATH, backup_dir: str = DEFAULT_BA
     try:
         # Ensure backup directory exists
         os.makedirs(backup_dir, exist_ok=True)
-        
+
         # Create backup filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         db_filename = os.path.basename(db_path)
-        backup_filename = f"{os.path.splitext(db_filename)[0]}_{timestamp}.db"
+        backup_filename = f'{os.path.splitext(db_filename)[0]}_{timestamp}.db'
         backup_path = os.path.join(backup_dir, backup_filename)
-        
+
         # Copy database file to backup location
         if os.path.exists(db_path):
             shutil.copy2(db_path, backup_path)
             return backup_path
-    except (PermissionError, OSError) as e:
+    except (PermissionError, OSError):
         # Log error or simply continue without backup on permission issues
         pass
-    return ""
+    return ''
 
-def ensure_db_exists(db_path: str = DEFAULT_DB_PATH, create_backup: bool = False) -> None:
+
+def ensure_db_exists(
+    db_path: str = DEFAULT_DB_PATH, create_backup: bool = False
+) -> None:
     """
     Ensure the SQLite database and tables exist, creating if necessary.
     Only create backup when create_backup=True (for write operations).
     """
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
+
     # Create a backup if the database already exists and backup was requested
     if create_backup and os.path.exists(db_path):
         backup_database(db_path)
-    
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -157,10 +165,10 @@ def list_threads(
     ensure_db_exists(db_path)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Only include active threads unless include_archived is True
-    where_clause = "" if include_archived else "WHERE t.is_archived = 0"
-    
+    where_clause = '' if include_archived else 'WHERE t.is_archived = 0'
+
     cursor.execute(
         f"""
     SELECT t.id, t.question,
@@ -201,7 +209,8 @@ def get_thread_by_id(
 
 
 def get_most_recent_thread(
-    db_path: str = DEFAULT_DB_PATH, include_archived: bool = False,
+    db_path: str = DEFAULT_DB_PATH,
+    include_archived: bool = False,
 ) -> tuple[int, str, float, float, bool] | None:
     """
     Return the single most recently active thread (or None if no threads).
@@ -221,17 +230,17 @@ def get_last_n_threads(
     db_path: str = DEFAULT_DB_PATH, n: int = 5, include_archived: bool = False
 ) -> list[tuple[int, str, float, bool]]:
     """
-    Returns last n active threads for picking. 
+    Returns last n active threads for picking.
     Each entry is (id, question, last_active, is_archived).
     By default, only returns non-archived threads unless include_archived is True.
     """
     ensure_db_exists(db_path)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Only include active threads unless include_archived is True
-    where_clause = "" if include_archived else "WHERE t.is_archived = 0"
-    
+    where_clause = '' if include_archived else 'WHERE t.is_archived = 0'
+
     cursor.execute(
         f"""
     SELECT t.id, t.question, t.last_active, t.is_archived
@@ -366,7 +375,7 @@ def archive_thread(thread_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
     ensure_db_exists(db_path, create_backup=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Mark thread as archived
     cursor.execute(
         """
@@ -374,7 +383,7 @@ def archive_thread(thread_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
     """,
         (thread_id,),
     )
-    
+
     success = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -389,7 +398,7 @@ def unarchive_thread(thread_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
     ensure_db_exists(db_path, create_backup=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Mark thread as not archived
     cursor.execute(
         """
@@ -397,7 +406,7 @@ def unarchive_thread(thread_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
     """,
         (thread_id,),
     )
-    
+
     success = cursor.rowcount > 0
     conn.commit()
     conn.close()

@@ -400,7 +400,12 @@ def cmd_export(thread_id: int) -> None:
         for idx, (r_id, r_type, r_content, r_added) in enumerate(resources, start=1):
             r_time = time.ctime(r_added)
             export_lines.append(f'### {idx}. [{r_type.upper()}] - {r_time}')
-            export_lines.append(f'{r_content}\n')
+            # Add triple backticks for code files
+            code_extensions = ('.py', '.js', '.ts', '.java', '.c', '.cpp', '.html', '.css', '.sh')
+            if r_type.upper() == "TEXT" and r_content.endswith(code_extensions):
+                export_lines.append(f'```\n{r_content}\n```\n')
+            else:
+                export_lines.append(f'{r_content}\n')
 
     # Join all lines with newlines
     export_content = '\n'.join(export_lines)
